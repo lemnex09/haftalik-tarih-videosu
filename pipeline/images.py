@@ -52,6 +52,8 @@ def _openai_call(prompt: str, refs: list[Path], cfg: dict) -> bytes:
             if r.status_code == 400 and ("safety" in msg.lower() or "moderation" in msg.lower()):
                 raise ValueError("safety:" + msg)
             log(f"OpenAI {r.status_code}: {msg}")
+            if "insufficient_quota" in msg or "billing" in msg.lower():
+                raise SystemExit("OpenAI bakiyesi bitti — platform.openai.com/settings/organization/billing adresinden kredi yükle")
             if r.status_code in (400, 401, 403, 404):
                 # model not available on this account -> fall back once to gpt-image-1
                 if "model" in msg.lower() and data["model"] != "gpt-image-1":
