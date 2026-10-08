@@ -54,6 +54,61 @@ def _eleven(text: str, prev: str, nxt: str, cfg: dict) -> tuple[bytes, dict]:
     raise RuntimeError("ElevenLabs başarısız")
 
 
+def _words(text: str) -> list[str]:
+    return [w for w in text.split() if any(ch.isalnum() for ch in w)]
+
+
+def _edge(text: str, path, cfg: dict) -> dict:
+    """Microsoft Edge neural TTS (free). Returns a char-level alignment built
+    from word boundaries so the rest of the pipeline works unchanged."""
+    import asyncio
+    import edge_tts
+
+    async def go():
+        comm = edge_tts.Communicate(text, cfg.get("edge_voice", "tr-TR-AhmetNeural"),
+                                    rate=cfg.get("edge_rate", "+5%"), pitch=cfg.get("edge_pitch", "+0Hz"),
+                                    boundary="WordBoundary")
+        audio, marks = bytearray(), []
+        async for ch in comm.stream():
+            if ch["type"] == "audio":
+                audio.extend(ch["data"])
+            elif ch["type"] == "WordBoundary":
+                marks.append((ch["offset"] / 1e7, (ch["offset"] + ch["duration"]) / 1e7))
+        return bytes(audio), marks
+
+    for attempt in range(5):
+        try:
+            audio, marks = asyncio.run(go())
+            if audio:
+                break
+        except Exception as e:  # network hiccups
+            log("edge-tts hatası:", e)
+        time.sleep(5 * (attempt + 1))
+    else:
+        raise RuntimeError("edge-tts başarısız")
+    path.write_bytes(audio)
+    return _align_from_words(text, marks)
+
+
+def _align_from_words(text: str, marks: list[tuple[float, float]]) -> dict:
+    """Map word timings onto characters: every char of word i gets word i's start."""
+    starts = [0.0] * len(text)
+    ends = [0.0] * len(text)
+    i, pos = 0, 0
+    tokens = text.split(" ")
+    for tok in tokens:
+        if any(ch.isalnum() for ch in tok):
+            st, en = marks[min(i, len(marks) - 1)] if marks else (0.0, 0.0)
+            i += 1
+        else:
+            st, en = (starts[pos - 1], ends[pos - 1]) if pos else (0.0, 0.0)
+        for k in range(pos, min(pos + len(tok) + 1, len(text))):
+            starts[k], ends[k] = st, en
+        pos += len(tok) + 1
+    return {"characters": list(text), "character_start_times_seconds": starts,
+            "character_end_times_seconds": ends}
+
+
 def _dummy(text: str, path):
     dur = max(1.0, len(text) * 0.062)
     run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
@@ -66,6 +121,10 @@ def _dummy(text: str, path):
 
 def generate(ep: Episode, force: bool = False):
     cfg = load_config()["voice"]
+    rec = next((ep.dir / f for f in ("kayit.mp3", "kayit.m4a", "kayit.wav") if (ep.dir / f).exists()), None)
+    if rec:  # the narrator's own recording wins over any TTS
+        from .recording import from_recording
+        return from_recording(ep, rec)
     secs = ep.script["sections"]
     texts = [section_text(s) for s in secs]
     for i, (sec, (text, offs)) in enumerate(zip(secs, texts), 1):
@@ -77,6 +136,8 @@ def generate(ep: Episode, force: bool = False):
         log(f"seslendirme bölüm {i}/{len(secs)} ({len(text)} karakter)")
         if cfg["provider"] == "dummy":
             align = _dummy(text, mp3)
+        elif cfg["provider"] == "edge":
+            align = _edge(text, mp3, cfg)
         else:
             prev = texts[i - 2][0] if i > 1 else ""
             nxt = texts[i][0] if i < len(texts) else ""

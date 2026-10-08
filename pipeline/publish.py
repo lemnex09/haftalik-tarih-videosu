@@ -52,6 +52,11 @@ def thumbnail(ep: Episode, force: bool = False):
                                      "leave the left 45% calm for title text.", ep.characters())
         if icfg["provider"] == "placeholder":
             images.placeholder(base, th["image"], "thumb")
+        elif icfg["provider"] in ("cloudflare", "pollinations"):
+            p2 = images.build_prompt(th["image"] + " Eye-catching YouTube thumbnail, one big expressive main "
+                                     "character on the right side, simple uncluttered background.",
+                                     ep.characters(), compact=True)
+            base.write_bytes(images.free_image(p2, 1938, icfg))
         else:
             refs = [ROOT / p for p in icfg.get("style_refs", []) if (ROOT / p).exists()]
             base.write_bytes(images._openai_call(prompt, refs, {**icfg, "quality": "high"}))

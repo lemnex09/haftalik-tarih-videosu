@@ -24,14 +24,15 @@ def build_timeline(ep: Episode) -> dict:
     for si, sec in enumerate(ep.script["sections"], 1):
         meta = json.loads((ep.audio / f"sec_{si:02d}.json").read_text())
         dur = min(meta["duration"], meta["speech_end"] + 0.25)
-        sections.append({"title": sec["title"], "start": t, "audio": f"sec_{si:02d}.mp3", "dur": dur})
+        g = meta.get("gap", gap)
+        sections.append({"title": sec["title"], "start": t, "audio": f"sec_{si:02d}.mp3", "dur": dur, "gap": g})
         starts = meta["scene_starts"]
         scs = by_sec[si]
         for k, sc in enumerate(scs):
             s = t + starts[k]
-            e = t + (starts[k + 1] if k + 1 < len(scs) else dur + gap)
+            e = t + (starts[k + 1] if k + 1 < len(scs) else dur + g)
             items.append({**sc, "start": s, "end": e})
-        t += dur + gap
+        t += dur + g
     tl = {"total": t, "sections": sections, "scenes": items}
     ep.timeline_path().write_text(json.dumps(tl, ensure_ascii=False, indent=1))
     short = [f"{i['id']}({i['end'] - i['start']:.1f}s)" for i in items if i["end"] - i["start"] < cfg["min_scene"]]
@@ -151,7 +152,7 @@ def render(ep: Episode, workers: int = 2):
     for k, s in enumerate(tl["sections"]):
         inputs += ["-i", str(ep.audio / s["audio"])]
         parts.append(f"[{k}:a]atrim=0:{s['dur']:.3f},aformat=sample_rates=48000:channel_layouts=stereo,"
-                     f"apad=pad_dur={gap}[a{k}]")
+                     f"apad=pad_dur={s.get('gap', gap)}[a{k}]")
     fc = ";".join(parts) + ";" + "".join(f"[a{k}]" for k in range(len(parts))) + \
         f"concat=n={len(parts)}:v=0:a=1,loudnorm=I={cfg['loudness_lufs']}:TP=-1.5:LRA=11[out]"
     narr = ep.build / "narration.m4a"

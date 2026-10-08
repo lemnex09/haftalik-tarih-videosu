@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,9 +17,80 @@ from .common import ROOT, Episode, env, load_config, log
 
 STYLE = (ROOT / "assets/style/style_prompt.txt").read_text(encoding="utf-8").strip()
 API = "https://api.openai.com/v1/images"
+CF_MODEL = "@cf/black-forest-labs/flux-1-schnell"
 
 
-def build_prompt(scene_prompt: str, characters: dict) -> str:
+class QuotaExceeded(Exception):
+    pass
+
+
+def _cloudflare_call(prompt: str, seed: int, cfg: dict) -> bytes:
+    """Cloudflare Workers AI — free daily allocation (~170 FLUX images/day)."""
+    acc, tok = env("CLOUDFLARE_ACCOUNT_ID"), env("CLOUDFLARE_API_TOKEN")
+    url = f"https://api.cloudflare.com/client/v4/accounts/{acc}/ai/run/{CF_MODEL}"
+    body = {"prompt": prompt[:2048], "steps": int(cfg.get("steps", 4)), "seed": seed}
+    for attempt in range(5):
+        try:
+            r = requests.post(url, headers={"Authorization": f"Bearer {tok}"}, json=body, timeout=120)
+            if r.status_code == 200:
+                return base64.b64decode(r.json()["result"]["image"])
+            msg = r.text[:400]
+            log(f"Cloudflare {r.status_code}: {msg}")
+            low = msg.lower()
+            if r.status_code == 429 or "allocation" in low or "neurons" in low or "4006" in msg:
+                raise QuotaExceeded(msg)
+            if r.status_code in (401, 403):
+                raise SystemExit("Cloudflare anahtarı hatalı — CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN kontrol et")
+        except requests.RequestException as e:
+            log("Cloudflare istek hatası:", e)
+        time.sleep(3 * 2 ** attempt)
+    raise RuntimeError("Cloudflare görsel üretimi başarısız")
+
+
+def _pollinations_call(prompt: str, seed: int, cfg: dict) -> bytes:
+    """Pollinations.ai — free, no key (anonymous ~1 request / 15 s)."""
+    from urllib.parse import quote
+    url = (f"https://image.pollinations.ai/prompt/{quote(prompt[:1800])}"
+           f"?width=1536&height=1024&model=flux&seed={seed}&nologo=true&private=true")
+    headers = {}
+    if os.environ.get("POLLINATIONS_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['POLLINATIONS_TOKEN']}"
+    for attempt in range(6):
+        try:
+            r = requests.get(url, headers=headers, timeout=180)
+            if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+                return r.content
+            log(f"Pollinations {r.status_code}: {r.text[:200]}")
+        except requests.RequestException as e:
+            log("Pollinations istek hatası:", e)
+        time.sleep(16 + 10 * attempt)
+    raise RuntimeError("Pollinations görsel üretimi başarısız")
+
+
+_cf_exhausted = False
+
+
+def free_image(prompt: str, seed: int, cfg: dict) -> bytes:
+    """Cloudflare first; when the daily free quota runs out, Pollinations."""
+    global _cf_exhausted
+    has_cf = os.environ.get("CLOUDFLARE_ACCOUNT_ID") and os.environ.get("CLOUDFLARE_API_TOKEN")
+    if cfg["provider"] == "cloudflare" and not has_cf and not _cf_exhausted:
+        log("Cloudflare anahtarı yok → Pollinations kullanılıyor")
+        _cf_exhausted = True
+    if cfg["provider"] == "cloudflare" and not _cf_exhausted:
+        try:
+            return _cloudflare_call(prompt, seed, cfg)
+        except QuotaExceeded:
+            _cf_exhausted = True
+            log("Cloudflare günlük ücretsiz kotası doldu → Pollinations'a geçiliyor")
+    time.sleep(15)  # anonymous Pollinations rate limit
+    return _pollinations_call(prompt, seed, cfg)
+
+
+FLUX_STYLE = (ROOT / "assets/style/style_prompt_flux.txt").read_text(encoding="utf-8").strip()
+
+
+def build_prompt(scene_prompt: str, characters: dict, compact: bool = False) -> str:
     txt = scene_prompt
     used = []
     for key, desc in characters.items():
@@ -26,6 +98,9 @@ def build_prompt(scene_prompt: str, characters: dict) -> str:
         if tok in txt:
             txt = txt.replace(tok, key.replace("_", " ").lower())
             used.append(f"- {key.replace('_', ' ').lower()}: {desc}")
+    if compact:  # FLUX: scene first (most weight), then style + character notes
+        chars_txt = " ".join(u[2:] + "." for u in used)
+        return f"{txt} {chars_txt} {FLUX_STYLE}"
     parts = [STYLE, ""]
     if used:
         parts += ["Recurring characters in this scene (keep their look consistent):", *used, ""]
@@ -98,13 +173,17 @@ def generate(ep: Episode, only: list[str] | None = None, force: bool = False) ->
 
     def job(sc):
         out = ep.images / f"{sc['id']}.png"
-        prompt = build_prompt(sc["image"], chars)
+        free = cfg["provider"] in ("cloudflare", "pollinations")
+        prompt = build_prompt(sc["image"], chars, compact=free)
         h = hashlib.sha1((prompt + cfg["model"] + cfg["quality"]).encode()).hexdigest()[:10]
         stamp = out.with_suffix(".hash")
         if out.exists() and not force and stamp.exists() and stamp.read_text() == h:
             return "cached", sc["id"]
         if cfg["provider"] == "placeholder":
             placeholder(out, sc["image"], sc["id"])
+        elif free:
+            seed = int(hashlib.md5(sc["id"].encode()).hexdigest()[:6], 16)
+            out.write_bytes(free_image(prompt, seed, cfg))
         else:
             try:
                 png = _openai_call(prompt, refs, cfg)
@@ -115,7 +194,8 @@ def generate(ep: Episode, only: list[str] | None = None, force: bool = False) ->
         stamp.write_text(h)
         return "generated", sc["id"]
 
-    with ThreadPoolExecutor(max_workers=int(cfg.get("concurrency", 4))) as pool:
+    workers = 1 if cfg["provider"] in ("cloudflare", "pollinations") else int(cfg.get("concurrency", 4))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futs = {pool.submit(job, s): s["id"] for s in scenes}
         for i, f in enumerate(as_completed(futs), 1):
             sid = futs[f]

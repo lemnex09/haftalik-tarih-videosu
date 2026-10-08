@@ -15,18 +15,25 @@ video:
   motion: 0.06                 # Ken Burns yakınlaşma miktarı (0.06 = %6)
 
 images:
-  provider: openai             # openai | placeholder (test için)
-  model: gpt-image-2           # erişimin yoksa gpt-image-1 yaz
+  # Ücretsiz: cloudflare (günde ~170 FLUX görseli bedava) → kota dolarsa otomatik pollinations (anahtarsız, bedava)
+  # Ücretli seçenek: openai (model/quality aşağıda)
+  provider: cloudflare         # cloudflare | pollinations | openai | placeholder (test)
+  steps: 4                     # cloudflare FLUX adımı (4–8; 8 daha iyi ama kota yarıya iner)
+  model: gpt-image-2           # yalnız openai için
   size: 1536x1024
-  quality: low                 # low | medium | high  (maliyet: low < medium < high)
+  quality: low
   concurrency: 4
-  style_refs:                  # stil tutarlılığı için her istekte gönderilen referanslar
+  style_refs:
     - assets/style/style_ref.png
 
 voice:
-  provider: elevenlabs         # elevenlabs | dummy (test için, sessiz)
+  # edge     : ücretsiz Microsoft Türkçe nöral ses (varsayılan)
+  # kayıt    : episodes/<slug>/kayit.mp3 varsa HER ZAMAN o kullanılır (kendi sesin, bedava)
+  # elevenlabs: ücretli, klon ses
+  provider: edge               # edge | elevenlabs | dummy (test)
+  edge_voice: tr-TR-AhmetNeural
+  edge_rate: "+5%"
   model: eleven_multilingual_v2
-  # Ses kimliği GitHub Secret olarak: ELEVENLABS_VOICE_ID
   stability: 0.45
   similarity_boost: 0.8
   style: 0.15

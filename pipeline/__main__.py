@@ -25,6 +25,10 @@ def main():
     a = ap.parse_args()
 
     if a.cmd == "style":
+        from .common import load_config
+        if load_config()["images"]["provider"] != "openai":
+            log("Stil referansı yalnızca OpenAI için gerekli; atlanıyor")
+            return
         from .images import bootstrap_style
         bootstrap_style(ROOT / "assets/style/style_ref.png")
         return

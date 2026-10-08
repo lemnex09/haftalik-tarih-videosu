@@ -33,6 +33,9 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
       IMAGES_QUALITY: ${{ inputs.images_quality }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -61,9 +64,10 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           pip install -q -r requirements.txt
+          if ls episodes/${{ steps.slug.outputs.slug }}/kayit.* >/dev/null 2>&1; then pip install -q faster-whisper; fi
 
-      - name: Önbellek (görseller ve ses tekrar ücretlendirilmesin)
-        uses: actions/cache@v4
+      - name: Önbelleği geri yükle (üretilmiş görseller/ses tekrar üretilmesin)
+        uses: actions/cache/restore@v4
         with:
           path: |
             episodes/${{ steps.slug.outputs.slug }}/build/images
@@ -74,7 +78,7 @@ jobs:
 
       - name: Anahtar kontrolü
         run: |
-          for v in OPENAI_API_KEY ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
+          for v in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN OPENAI_API_KEY ELEVENLABS_API_KEY; do
             if [ -n "${!v}" ]; then echo "$v: var" | tee -a run.log; else echo "$v: EKSİK" | tee -a run.log; fi
           done
 
@@ -82,6 +86,8 @@ jobs:
         run: |
           if [ ! -f assets/style/style_ref.png ]; then
             set -o pipefail; python -m pipeline style 2>&1 | tee -a run.log
+          fi
+          if [ -f assets/style/style_ref.png ] && ! git ls-files --error-unmatch assets/style/style_ref.png >/dev/null 2>&1; then
             git config user.name "video-bot"; git config user.email "video-bot@users.noreply.github.com"
             git add assets/style/style_ref.png
             git commit -m "Stil referans görseli eklendi [skip ci]"
@@ -117,6 +123,16 @@ jobs:
             episodes/$S/output/YOUTUBE.md episodes/$S/output/youtube.json episodes/$S/output/onizleme.jpg \
             --title "$(python -c "import json;print(json.load(open('episodes/$S/output/youtube.json'))['title'])")" \
             --notes-file episodes/$S/output/YOUTUBE.md
+
+      - name: Önbelleği kaydet (iş yarıda kalsa bile)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            episodes/${{ steps.slug.outputs.slug }}/build/images
+            episodes/${{ steps.slug.outputs.slug }}/build/audio
+            episodes/${{ steps.slug.outputs.slug }}/build/thumb_base.png
+          key: build-${{ steps.slug.outputs.slug }}-${{ github.run_id }}
 
       - name: Hata kaydını yayınla (Claude okuyabilsin)
         if: failure()
