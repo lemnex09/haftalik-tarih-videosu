@@ -1,0 +1,39 @@
+# Konu kuyruğu — haftalık görev sıradaki, henüz episodes/<slug>/script.json'u olmayan konuyu alır.
+# Sırayı değiştirebilir, yeni konu ekleyebilirsin. "notes" senaryoya yön verir.
+queue:
+  - slug: 1938-turkiyede-dogmak
+    title: "Eğer 1938'de Türkiye'de Doğsaydın?"
+    notes: "Köyde doğum, Atatürk'ün ölüm yılı, savaş yılları ve ekmek karnesi, köy okulu, askerlik, 1950 sonrası değişim, bugün 88 yaşında olmak."
+  - slug: 1950-istanbula-gocmek
+    title: "Eğer 1950'lerde Köyden İstanbul'a Göçseydin?"
+    notes: "Haydarpaşa'ya iniş, gecekondu, ilk fabrika işi, hemşehri ağları, dolmuş."
+  - slug: 1940-koy-enstitusu
+    title: "Eğer 1940'ta Köy Enstitüsü'ne Gitseydin?"
+    notes: "Okulu kendin inşa etmek, tarla, mandolin, köye öğretmen olarak dönüş, kapanış."
+  - slug: 1915-canakkale-asker
+    title: "Eğer 1915'te Çanakkale'de Asker Olsaydın?"
+    notes: "Saygılı, aile dostu anlatım; siper hayatı, mektuplar, yemek, hastalık."
+  - slug: 1453-istanbulda-yasamak
+    title: "Eğer 1453'te İstanbul'da Yaşasaydın?"
+    notes: "Kuşatmayı iki taraftan sıradan bir insan gözüyle."
+  - slug: 1950-kore-savasi
+    title: "Eğer 1950'de Kore'ye Asker Gitseydin?"
+    notes: "Gemi yolculuğu, soğuk, Kunuri; saygılı ton."
+  - slug: 1970-lerde-yesilcam
+    title: "Eğer 1970'lerde Yeşilçam'da Figüran Olsaydın?"
+    notes: "Günde üç film, dublaj, yazlık sinema."
+  - slug: 1980-lerde-ilk-renkli-tv
+    title: "Eğer 1980'lerde Türkiye'de Çocuk Olsaydın?"
+    notes: "Tek kanal, renkli TV, misket, bakkal defteri, Tercüman Gazetesi kuponları."
+  - slug: 1920-cephane-tasiyan-kadin
+    title: "Eğer 1921'de Cepheye Cephane Taşıyan Bir Kadın Olsaydın?"
+    notes: "Kağnılar, İnebolu-Ankara yolu."
+  - slug: osmanlida-yeniceri
+    title: "Eğer Osmanlı'da Yeniçeri Olsaydın?"
+    notes: "Devşirme, Acemi Ocağı, kazan, maaş, isyan."
+  - slug: 1960-avustralyaya-gocmek
+    title: "Eğer 1968'de Avustralya'ya Göç Etseydin?"
+    notes: "Gemi yolculuğu, Melbourne, yeni dil."
+  - slug: osmanlida-hamal
+    title: "Eğer 1890'da İstanbul'da Hamal Olsaydın?"
+    notes: "Semer, lonca, kervansaray odaları."

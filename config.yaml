@@ -1,0 +1,47 @@
+# Haftalık tarih videosu otomasyonu — ana ayarlar
+channel:
+  name: "KANAL ADI"            # kendi kanal adını yaz
+  instagram: ""                # örn. https://www.instagram.com/kanaladi/
+  footer: ""                   # açıklamanın en altına eklenecek satır (isteğe bağlı)
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  crf: 20
+  section_gap: 0.35            # bölümler arası sessizlik (sn)
+  min_scene: 1.2               # bir görselin ekranda kalacağı en kısa süre (sn)
+  loudness_lufs: -16           # YouTube için ses seviyesi
+  motion: 0.06                 # Ken Burns yakınlaşma miktarı (0.06 = %6)
+
+images:
+  provider: openai             # openai | placeholder (test için)
+  model: gpt-image-2           # erişimin yoksa gpt-image-1 yaz
+  size: 1536x1024
+  quality: medium              # low | medium | high  (maliyet: low < medium < high)
+  concurrency: 4
+  style_refs:                  # stil tutarlılığı için her istekte gönderilen referanslar
+    - assets/style/style_ref.png
+
+voice:
+  provider: elevenlabs         # elevenlabs | dummy (test için, sessiz)
+  model: eleven_multilingual_v2
+  # Ses kimliği GitHub Secret olarak: ELEVENLABS_VOICE_ID
+  stability: 0.45
+  similarity_boost: 0.8
+  style: 0.15
+  speed: 1.0
+  language_code: tr
+
+overlay:
+  font: assets/fonts/LuckiestGuy-Regular.ttf
+  size: 118
+  color: "#111111"
+  stroke_color: "#ffffff"
+  stroke_width: 6
+  default_position: top        # top | center | bottom
+
+thumbnail:
+  font: assets/fonts/LuckiestGuy-Regular.ttf
+  text_color: "#FFD43B"
+  stroke_color: "#111111"

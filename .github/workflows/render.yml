@@ -1,0 +1,120 @@
+name: Videoyu üret
+
+on:
+  push:
+    branches: [main]
+    paths: ["episodes/*/script.yaml"]
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Bölüm klasörü (episodes/<slug>)"
+        required: true
+      images_quality:
+        description: "Görsel kalitesi (low | medium | high) — boş bırakırsan config.yaml"
+        required: false
+        default: ""
+      force_images:
+        description: "Görselleri baştan üret (önbelleği yok say)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+      IMAGES_QUALITY: ${{ inputs.images_quality }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Bölümü bul
+        id: slug
+        run: |
+          if [ -n "${{ inputs.slug }}" ]; then
+            SLUG="${{ inputs.slug }}"
+          else
+            SLUG=$(git diff --name-only HEAD~1 HEAD -- 'episodes/*/script.yaml' | head -1 | cut -d/ -f2)
+          fi
+          [ -z "$SLUG" ] && { echo "Bölüm bulunamadı"; exit 1; }
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "Bölüm: $SLUG"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Kurulum
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q -r requirements.txt
+
+      - name: Önbellek (görseller ve ses tekrar ücretlendirilmesin)
+        uses: actions/cache@v4
+        with:
+          path: |
+            episodes/${{ steps.slug.outputs.slug }}/build/images
+            episodes/${{ steps.slug.outputs.slug }}/build/audio
+            episodes/${{ steps.slug.outputs.slug }}/build/thumb_base.png
+          key: build-${{ steps.slug.outputs.slug }}-${{ github.run_id }}
+          restore-keys: build-${{ steps.slug.outputs.slug }}-
+
+      - name: Stil referansı (yalnızca ilk sefer)
+        run: |
+          if [ ! -f assets/style/style_ref.png ]; then
+            python -m pipeline style
+            git config user.name "video-bot"; git config user.email "video-bot@users.noreply.github.com"
+            git add assets/style/style_ref.png
+            git commit -m "Stil referans görseli eklendi [skip ci]"
+            git pull --rebase && git push
+          fi
+
+      - name: Senaryo kontrolü
+        run: python -m pipeline validate ${{ steps.slug.outputs.slug }}
+
+      - name: Görseller
+        run: python -m pipeline images ${{ steps.slug.outputs.slug }} ${{ inputs.force_images && '--force' || '' }}
+
+      - name: Seslendirme
+        run: python -m pipeline voice ${{ steps.slug.outputs.slug }}
+
+      - name: Kurgu
+        run: python -m pipeline render ${{ steps.slug.outputs.slug }}
+
+      - name: Kapak ve YouTube metinleri
+        run: python -m pipeline publish ${{ steps.slug.outputs.slug }}
+
+      - name: Önizleme kontakt sayfası
+        run: |
+          S=${{ steps.slug.outputs.slug }}
+          ffmpeg -v error -y -i episodes/$S/output/$S.mp4 -vf "fps=1/10,scale=480:-1,tile=6x8" -frames:v 1 episodes/$S/output/onizleme.jpg
+
+      - name: Release olarak yayınla
+        run: |
+          S=${{ steps.slug.outputs.slug }}
+          TAG="$S-$(date +%Y%m%d-%H%M)"
+          gh release create "$TAG" \
+            episodes/$S/output/$S.mp4 episodes/$S/output/thumbnail.jpg \
+            episodes/$S/output/YOUTUBE.md episodes/$S/output/youtube.json episodes/$S/output/onizleme.jpg \
+            --title "$(python -c "import json;print(json.load(open('episodes/$S/output/youtube.json'))['title'])")" \
+            --notes-file episodes/$S/output/YOUTUBE.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ steps.slug.outputs.slug }}
+          path: episodes/${{ steps.slug.outputs.slug }}/output/
+          retention-days: 30
