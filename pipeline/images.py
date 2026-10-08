@@ -55,15 +55,15 @@ def _pollinations_call(prompt: str, seed: int, cfg: dict) -> bytes:
     headers = {}
     if os.environ.get("POLLINATIONS_TOKEN"):
         headers["Authorization"] = f"Bearer {os.environ['POLLINATIONS_TOKEN']}"
-    for attempt in range(6):
+    for attempt in range(4):
         try:
-            r = requests.get(url, headers=headers, timeout=180)
+            r = requests.get(url, headers=headers, timeout=90)
             if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
                 return r.content
             log(f"Pollinations {r.status_code}: {r.text[:200]}")
         except requests.RequestException as e:
             log("Pollinations istek hatası:", e)
-        time.sleep(16 + 10 * attempt)
+        time.sleep(8 + 6 * attempt)
     raise RuntimeError("Pollinations görsel üretimi başarısız")
 
 
@@ -171,6 +171,10 @@ def generate(ep: Episode, only: list[str] | None = None, force: bool = False) ->
         scenes = [s for s in scenes if s["id"] in only]
     report = {"generated": 0, "cached": 0, "failed": []}
 
+    t0 = time.time()
+    budget = float(os.environ.get("IMAGES_TIME_BUDGET_MIN", "110")) * 60
+    report["skipped"] = []
+
     def job(sc):
         out = ep.images / f"{sc['id']}.png"
         free = cfg["provider"] in ("cloudflare", "pollinations")
@@ -179,6 +183,8 @@ def generate(ep: Episode, only: list[str] | None = None, force: bool = False) ->
         stamp = out.with_suffix(".hash")
         if out.exists() and not force and stamp.exists() and stamp.read_text() == h:
             return "cached", sc["id"]
+        if time.time() - t0 > budget:
+            return "skipped", sc["id"]
         if cfg["provider"] == "placeholder":
             placeholder(out, sc["image"], sc["id"])
         elif free:
@@ -201,14 +207,20 @@ def generate(ep: Episode, only: list[str] | None = None, force: bool = False) ->
             sid = futs[f]
             try:
                 kind, _ = f.result()
-                report[kind] += 1
+                if kind == "skipped":
+                    report["skipped"].append(sid)
+                else:
+                    report[kind] += 1
             except Exception as e:  # keep going, report at end
                 log("görsel başarısız", sid, e)
                 report["failed"].append(sid)
                 placeholder(ep.images / f"{sid}.png", "EKSİK GÖRSEL: " + sid, sid)
             if i % 10 == 0:
                 log(f"görseller {i}/{len(scenes)}")
-    log("görsel raporu:", report)
+    log("görsel raporu:", {k: (len(v) if isinstance(v, list) else v) for k, v in report.items()})
+    if report["skipped"]:
+        raise SystemExit(f"Süre doldu: {len(report['skipped'])} görsel kaldı. Üretilenler önbellekte; "
+                         "iş akışını yeniden çalıştırınca kaldığı yerden devam eder.")
     return report
 
 

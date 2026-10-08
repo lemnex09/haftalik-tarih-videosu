@@ -28,7 +28,7 @@ concurrency:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 170
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -135,7 +135,7 @@ jobs:
           key: build-${{ steps.slug.outputs.slug }}-${{ github.run_id }}
 
       - name: Hata kaydını yayınla (Claude okuyabilsin)
-        if: failure()
+        if: failure() || cancelled()
         run: |
           touch run.log
           gh release create "hata-${{ github.run_id }}" run.log --prerelease \
