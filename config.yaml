@@ -18,7 +18,7 @@ images:
   provider: openai             # openai | placeholder (test için)
   model: gpt-image-2           # erişimin yoksa gpt-image-1 yaz
   size: 1536x1024
-  quality: medium              # low | medium | high  (maliyet: low < medium < high)
+  quality: low                 # low | medium | high  (maliyet: low < medium < high)
   concurrency: 4
   style_refs:                  # stil tutarlılığı için her istekte gönderilen referanslar
     - assets/style/style_ref.png
