@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import hashlib
 import json
 import os
@@ -98,9 +99,16 @@ def build_prompt(scene_prompt: str, characters: dict, compact: bool = False) -> 
         if tok in txt:
             txt = txt.replace(tok, key.replace("_", " ").lower())
             used.append(f"- {key.replace('_', ' ').lower()}: {desc}")
-    if compact:  # FLUX: scene first (most weight), then style + character notes
-        chars_txt = " ".join(u[2:] + "." for u in used)
-        return f"{txt} {chars_txt} {FLUX_STYLE}"
+    if compact:  # FLUX: style FIRST (early tokens weigh most), people forced into the mascot style
+        fig = ("a simple faceless cartoon figure with a plain white round ball head and two tiny black dot eyes")
+        txt = scene_prompt
+        for key, desc in characters.items():
+            clothes = ", ".join(x.strip() for x in desc.split(",")[1:]
+                                if "head" not in x and "eye" not in x) or desc
+            txt = txt.replace("{" + key + "}", f"{fig} wearing {clothes}")
+        for w in ("man", "woman", "boy", "girl", "men", "women", "children", "child", "baby", "people", "villagers"):
+            txt = re.sub(rf"\b{w}\b", f"cartoon {w}", txt)
+        return f"{FLUX_STYLE} SCENE: {txt}"
     parts = [STYLE, ""]
     if used:
         parts += ["Recurring characters in this scene (keep their look consistent):", *used, ""]

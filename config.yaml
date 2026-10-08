@@ -32,7 +32,7 @@ voice:
   # elevenlabs: ücretli, klon ses
   provider: edge               # edge | elevenlabs | dummy (test)
   edge_voice: tr-TR-AhmetNeural
-  edge_rate: "+5%"
+  edge_rate: "+22%"
   model: eleven_multilingual_v2
   stability: 0.45
   similarity_boost: 0.8
