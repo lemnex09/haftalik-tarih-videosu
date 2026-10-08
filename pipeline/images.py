@@ -48,10 +48,17 @@ def _openai_call(prompt: str, refs: list[Path], cfg: dict) -> bytes:
                                   data=json.dumps({**data, "n": 1}), timeout=300)
             if r.status_code == 200:
                 return base64.b64decode(r.json()["data"][0]["b64_json"])
-            msg = r.text[:400]
-            if r.status_code == 400 and "safety" in msg.lower():
+            msg = r.text[:600]
+            if r.status_code == 400 and ("safety" in msg.lower() or "moderation" in msg.lower()):
                 raise ValueError("safety:" + msg)
             log(f"OpenAI {r.status_code}: {msg}")
+            if r.status_code in (400, 401, 403, 404):
+                # model not available on this account -> fall back once to gpt-image-1
+                if "model" in msg.lower() and data["model"] != "gpt-image-1":
+                    log(f"'{data['model']}' kullanılamıyor, gpt-image-1 ile deneniyor")
+                    data["model"] = cfg["model"] = "gpt-image-1"
+                    continue
+                raise SystemExit(f"OpenAI hatası {r.status_code} — anahtar, kuruluş doğrulaması ya da bakiye: {msg}")
         except (requests.RequestException, KeyError) as e:
             log("OpenAI istek hatası:", e)
         time.sleep(min(60, 4 * 2 ** attempt) + random.random())
